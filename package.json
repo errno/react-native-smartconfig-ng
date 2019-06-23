@@ -1,0 +1,18 @@
+
+{
+  "name": "react-native-smartconfig-ng",
+  "version": "1.0.0",
+  "description": "Espressif ESPTouch/SmartConfig support library",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "react-native", "esp", "esp32", "esp8266", "espressif", "esptouch", "smartconfig"
+  ],
+  "author": "Artem Godlevskyi <artem.hodlevskyy@gmail.com>",
+  "license": "MIT",
+  "peerDependencies": {
+    "react-native": "^0.41.2"
+  }
+}
