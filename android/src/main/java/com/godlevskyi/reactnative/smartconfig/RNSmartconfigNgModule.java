@@ -1,5 +1,5 @@
 
-package com.godlevskyi.reactnative;
+package com.godlevskyi.reactnative.smartconfig;
 
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;

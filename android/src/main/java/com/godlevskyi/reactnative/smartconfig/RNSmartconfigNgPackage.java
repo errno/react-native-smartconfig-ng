@@ -1,5 +1,5 @@
 
-package com.godlevskyi.reactnative;
+package com.godlevskyi.reactnative.smartconfig;
 
 import java.util.Arrays;
 import java.util.Collections;
