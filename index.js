@@ -1,6 +1,6 @@
 
 import { NativeModules } from 'react-native';
 
-const { RNSmartconfigNg } = NativeModules;
+const { Smartconfig } = NativeModules;
 
-export default RNSmartconfigNg;
+export default Smartconfig;

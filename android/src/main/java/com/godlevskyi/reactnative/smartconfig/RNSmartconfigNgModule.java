@@ -1,10 +1,27 @@
 
 package com.godlevskyi.reactnative.smartconfig;
 
+import java.util.List;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import android.os.AsyncTask;
+import android.os.Build;
+import android.util.Log;
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.Callback;
+import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.WritableArray;
+import com.espressif.iot.esptouch.EsptouchTask;
+import com.espressif.iot.esptouch.IEsptouchResult;
+import com.espressif.iot.esptouch.IEsptouchTask;
+import com.espressif.iot.esptouch.util.ByteUtil;
 
 public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   private static final String TAG = "RNSmartconfigNgModule";
@@ -16,6 +33,15 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   private boolean mReceiverRegistered = false;
   private Promise mConfigPromise;
   private EsptouchAsyncTask mTask;
+
+    // method Promise.reject(String,String) is not applicable
+    //   (argument mismatch; int cannot be converted to String)
+    // method Promise.reject(String,Throwable) is not applicable
+    //   (argument mismatch; int cannot be converted to String)
+    // method Promise.reject(Throwable,WritableMap) is not applicable
+    //   (argument mismatch; int cannot be converted to Throwable)
+    // method Promise.reject(String,WritableMap) is not applicable
+    //   (argument mismatch; int cannot be converted to String)
 
   private BroadcastReceiver mReceiver = new BroadcastReceiver() {
     @Override
@@ -36,9 +62,6 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
           }
           onWifiChanged(wifiInfo);
           break;
-        case LocationManager.PROVIDERS_CHANGED_ACTION:
-          onWifiChanged(wifiManager.getConnectionInfo());
-          break;
       }
     }
   };
@@ -53,19 +76,12 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     return "Smartconfig";
   }
 
-  private boolean isSDKAtLeastP() {
-    return Build.VERSION.SDK_INT >= 28;
-  }
-
   @ReactMethod
   public void initESPTouch() {
     if (mReceiverRegistered) return;
     mReceiverRegistered = true;
     Log.i(TAG, "Register receiver");
     IntentFilter filter = new IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION);
-    if (isSDKAtLeastP()) {
-      filter.addAction(LocationManager.PROVIDERS_CHANGED_ACTION);
-    }
     reactContext.registerReceiver(mReceiver, filter);
   }
 
@@ -81,7 +97,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
       return;
     }
     if (!isWifiConnected) {
-      promise.reject(-3, "No Wifi connection");
+      promise.reject("No Wifi connection");
       return;
     }
 
@@ -112,14 +128,14 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
 
           if (resolved) {
             Log.d(TAG, "Success run smartconfig");
-            promise.resolve(ret);
+            mConfigPromise.resolve(ret);
           } else {
             Log.d(TAG, "Error run smartconfig");
-            promise.reject("Smartconfig failed");
+            mConfigPromise.reject("Smartconfig failed");
           }
         } catch (Exception e) {
           Log.d(TAG, "Error, Smartconfig could not complete!");
-          promise.reject("new Exception()", e);
+          mConfigPromise.reject("new Exception()", e);
         }
       }
     });
@@ -188,7 +204,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     }
   }
 
-  private class EsptouchAsyncTask extends AsyncTask<byte[], Void, List<IEsptouchResult>> {
+  private class EsptouchAsyncTask extends AsyncTask<String, Void, List<IEsptouchResult>> {
     // without the lock, if the user tap confirm and cancel quickly enough,
     // the bug will arise. the reason is follows:
     // 0. task is starting created, but not finished
@@ -245,7 +261,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
       Log.d(TAG, "Result: " + result.size());
       IEsptouchResult firstResult = result.get(0);
       if (!firstResult.isCancelled()) {
-        if (firstResult.isSuc() && this.taskListener != null) {
+        if (this.taskListener != null) {
           this.taskListener.onFinished(result);
         }
       }
