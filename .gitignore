@@ -39,6 +39,11 @@ build/
 local.properties
 *.iml
 
+# VS Code
+.vscode/
+android/.project
+android/.settings/
+
 # BUCK
 buck-out/
 \.buckd/
