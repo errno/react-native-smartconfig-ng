@@ -147,7 +147,7 @@ RCT_REMAP_METHOD(startSmartConfig,
     if (self.helper == nil) {
         self.helper = [[SmartconfigHelper alloc] init];
     }
-    [self.helper startSmartConfig:pwd broadcastType:type resolver: resolve, rejecter: reject];
+    [self.helper startSmartConfig:pwd broadcastType:type resolver: resolve rejecter: reject];
 }
 
 RCT_REMAP_METHOD(getNetInfo,
