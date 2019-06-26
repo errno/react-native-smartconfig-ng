@@ -139,7 +139,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
         }
       }
     });
-    mTask.execute(mSSID, mBSSID, pwd, "YES", "1");
+    mTask.execute(mSSID, mBSSID, pwd, "10");
   }
 
   @ReactMethod
@@ -239,12 +239,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
         String apSsid = params[0];
         String apBssid = params[1];
         String apPassword = params[2];
-        String isSsidHiddenStr = params[3];
-        String taskResultCountStr = params[4];
-        boolean isSsidHidden = false;
-        if (isSsidHiddenStr.equals("YES")) {
-          isSsidHidden = true;
-        }
+        String taskResultCountStr = params[3];
         taskResultCount = Integer.parseInt(taskResultCountStr);
         mEsptouchTask = new EsptouchTask(apSsid, apBssid, apPassword, reactContext);
       }
