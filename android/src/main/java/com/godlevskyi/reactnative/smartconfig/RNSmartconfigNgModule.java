@@ -134,6 +134,14 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
+  public void getNetInfo(Promise promise) {
+    WritableMap map = Arguments.createMap();
+    map.putString("ssid", mSSID);
+    map.putString("bssid", mBSSID);
+    promise.resolve(map);
+  }
+
+  @ReactMethod
   public void start(String pwd, int broadcastType, int deviceCount, Promise promise) {
     mConfigPromise = promise;
     if (!mReceiverRegistered) {
