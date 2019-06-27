@@ -88,6 +88,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
             || info.getNetworkId() == -1
             || "<unknown ssid>".equals(info.getSSID());
     if (disconnected) {
+      Log.i(TAG, "Wifi disconnected");
       mSSID = "";
       mBSSID = "";
       isWifiConnected = false;
@@ -115,7 +116,15 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
           is5GWifi = false;
         }
       }
+      Log.i(TAG, "Wifi connected ssid=" + mSSID);
     }
+    WritableMap params = Arguments.createMap();
+    params.putString("ssid", mSSID);
+    params.putString("bssid", mBSSID);
+    params.putBoolean("is5G", is5GWifi);
+    params.putBoolean("connected", isWifiConnected);
+    reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("SmartconfigWifiChanged", params);
   }
 
   private void onEsptouchResultAddedPerform(final IEsptouchResult result) {
@@ -163,7 +172,17 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   }
   
   @ReactMethod
+  public void cancel() {
+    if (mConfigPromise != null) mConfigPromise.reject("Smartconfig canceled");
+    mConfigPromise = null;
+    if (mTask != null) {
+      mTask.cancelSC();
+    }
+  }
+
+  @ReactMethod
   public void finish() {
+    if (mConfigPromise != null) mConfigPromise.reject("Smartconfig finished");
     mConfigPromise = null;
     if (mTask != null) {
       mTask.cancelSC();
@@ -180,6 +199,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     WritableMap map = Arguments.createMap();
     map.putString("ssid", mSSID);
     map.putString("bssid", mBSSID);
+    map.putBoolean("5G", is5GWifi);
     promise.resolve(map);
   }
 
@@ -231,7 +251,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
         mConfigPromise.reject("Create Esptouch task failed");
         return;
       }
-
+      Log.d(TAG, "PostExecute");
       IEsptouchResult firstResult = result.get(0);
       // check whether the task is cancelled and no results received
       if (!firstResult.isCancelled()) {
