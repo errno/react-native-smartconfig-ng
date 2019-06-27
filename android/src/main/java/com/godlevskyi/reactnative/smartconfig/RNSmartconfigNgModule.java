@@ -21,6 +21,7 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.espressif.iot.esptouch.EsptouchTask;
 import com.espressif.iot.esptouch.IEsptouchResult;
 import com.espressif.iot.esptouch.IEsptouchTask;
@@ -40,7 +41,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   private IEsptouchListener myListener = new IEsptouchListener() {
     @Override
     public void onEsptouchResultAdded(final IEsptouchResult result) {
-        onEsptoucResultAddedPerform(result);
+        onEsptouchResultAddedPerform(result);
     }
   };
 
@@ -89,16 +90,14 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     if (disconnected) {
       mSSID = "";
       mBSSID = "";
-      // TODO: event
       isWifiConnected = false;
 
       if (mTask != null) {
-        mTask.cancelEsptouch();
+        mTask.cancelSC();
         mTask = null;
         if (mConfigPromise != null) mConfigPromise.reject("no Wifi connection");
       }
     } else {
-      // TODO: event
       isWifiConnected = true;
       mSSID = info.getSSID();
       if (mSSID.startsWith("\"") && mSSID.endsWith("\"")) {
@@ -110,21 +109,23 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
         int frequency = info.getFrequency();
         if (frequency > 4900 && frequency < 5900) {
           // Connected 5G wifi. Device does not support 5G
-          // TODO: event
           Log.i(TAG, "Connected 5G wifi. Device does not support 5G");
           is5GWifi = true;
         } else {
-          // TODO: event
           is5GWifi = false;
         }
       }
     }
   }
 
-  private void onEsptoucResultAddedPerform(final IEsptouchResult result) {
+  private void onEsptouchResultAddedPerform(final IEsptouchResult result) {
     // String text = result.getBssid() + " is connected to the wifi";
-    // TODO: emmit event
-    Log.i(TAG, "EsptoucResultAdded");
+    WritableMap params = Arguments.createMap();
+    params.putString("bssid", result.getBssid());
+    params.putString("ipv4", result.getInetAddress().getHostAddress());
+    reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("SmartconfigResultAdded", params);
+    Log.i(TAG, "SmartconfigResultAdded");
   }
 
   @ReactMethod
@@ -155,7 +156,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     byte[] broadcast = {(byte)(broadcastType >> 24), (byte)(broadcastType >> 16), (byte)(broadcastType >> 8), (byte) broadcastType};
 
     if (mTask != null) {
-      mTask.cancelEsptouch();
+      mTask.cancelSC();
     }
     mTask = new EsptouchAsyncTask(thisActivity);
     mTask.execute(ssid, bssid, password, devices, broadcast);
@@ -165,7 +166,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   public void finish() {
     mConfigPromise = null;
     if (mTask != null) {
-      mTask.cancelEsptouch();
+      mTask.cancelSC();
     }
     if (mReceiverRegistered) {
       reactContext.unregisterReceiver(mReceiver);
@@ -195,7 +196,7 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
       mActivity = new WeakReference<>(activity);
     }
 
-    void cancelEsptouch() {
+    void cancelSC() {
       cancel(true);
       if (mEsptouchTask != null) {
         mEsptouchTask.interrupt();
