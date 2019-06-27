@@ -1,7 +1,10 @@
 
 package com.godlevskyi.reactnative.smartconfig;
 
+import java.lang.ref.WeakReference;
+import java.nio.ByteBuffer;
 import java.util.List;
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -21,28 +24,28 @@ import com.facebook.react.bridge.WritableArray;
 import com.espressif.iot.esptouch.EsptouchTask;
 import com.espressif.iot.esptouch.IEsptouchResult;
 import com.espressif.iot.esptouch.IEsptouchTask;
+import com.espressif.iot.esptouch.IEsptouchListener;
 import com.espressif.iot.esptouch.util.ByteUtil;
+import com.espressif.iot.esptouch.util.TouchNetUtil;
 
 public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
   private static final String TAG = "RNSmartconfigNgModule";
   private final ReactApplicationContext reactContext;
+  private Activity thisActivity = getCurrentActivity();
+  private Promise mConfigPromise;
   private String mSSID = "";
   private String mBSSID = "";
-  private boolean is5GWifi = false;
   private boolean isWifiConnected = false;
-  private boolean mReceiverRegistered = false;
-  private Promise mConfigPromise;
+  private boolean is5GWifi = false;
+  private IEsptouchListener myListener = new IEsptouchListener() {
+    @Override
+    public void onEsptouchResultAdded(final IEsptouchResult result) {
+        onEsptoucResultAddedPerform(result);
+    }
+  };
+
   private EsptouchAsyncTask mTask;
-
-    // method Promise.reject(String,String) is not applicable
-    //   (argument mismatch; int cannot be converted to String)
-    // method Promise.reject(String,Throwable) is not applicable
-    //   (argument mismatch; int cannot be converted to String)
-    // method Promise.reject(Throwable,WritableMap) is not applicable
-    //   (argument mismatch; int cannot be converted to Throwable)
-    // method Promise.reject(String,WritableMap) is not applicable
-    //   (argument mismatch; int cannot be converted to String)
-
+  private boolean mReceiverRegistered = false;
   private BroadcastReceiver mReceiver = new BroadcastReceiver() {
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -71,75 +74,104 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     this.reactContext = reactContext;
   }
 
-  @Override
-  public String getName() {
-    return "Smartconfig";
-  }
-
-  @ReactMethod
-  public void initESPTouch() {
+  private void registerBroadcastReceiver() {
     if (mReceiverRegistered) return;
-    mReceiverRegistered = true;
-    Log.i(TAG, "Register receiver");
+    Log.i(TAG, "register receiver");
     IntentFilter filter = new IntentFilter(WifiManager.NETWORK_STATE_CHANGED_ACTION);
     reactContext.registerReceiver(mReceiver, filter);
+    mReceiverRegistered = true;
+  }
+
+  private void onWifiChanged(WifiInfo info) {
+    boolean disconnected = info == null
+            || info.getNetworkId() == -1
+            || "<unknown ssid>".equals(info.getSSID());
+    if (disconnected) {
+      mSSID = "";
+      mBSSID = "";
+      // TODO: event
+      isWifiConnected = false;
+
+      if (mTask != null) {
+        mTask.cancelEsptouch();
+        mTask = null;
+        if (mConfigPromise != null) mConfigPromise.reject("no Wifi connection");
+      }
+    } else {
+      // TODO: event
+      isWifiConnected = true;
+      mSSID = info.getSSID();
+      if (mSSID.startsWith("\"") && mSSID.endsWith("\"")) {
+        mSSID = mSSID.substring(1, mSSID.length() - 1);
+      }
+      mBSSID = info.getBSSID();
+      
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        int frequency = info.getFrequency();
+        if (frequency > 4900 && frequency < 5900) {
+          // Connected 5G wifi. Device does not support 5G
+          // TODO: event
+          Log.i(TAG, "Connected 5G wifi. Device does not support 5G");
+          is5GWifi = true;
+        } else {
+          // TODO: event
+          is5GWifi = false;
+        }
+      }
+    }
+  }
+
+  private void onEsptoucResultAddedPerform(final IEsptouchResult result) {
+    // String text = result.getBssid() + " is connected to the wifi";
+    // TODO: emmit event
+    Log.i(TAG, "EsptoucResultAdded");
   }
 
   @ReactMethod
-  public void startSmartConfig(String pwd, int broadcastType, Promise promise) {
+  public void init() {
+    registerBroadcastReceiver();
+  }
+
+  @ReactMethod
+  public void start(String pwd, int broadcastType, int deviceCount, Promise promise) {
     mConfigPromise = promise;
     if (!mReceiverRegistered) {
-      promise.reject("SmartConfig is not initialized");
+      mConfigPromise.reject("Smartconfig is not initialized");
       return;
     }
     if (is5GWifi) {
-      promise.reject("Device don not support 5G Wifi, please make sure the currently connected Wifi is 2.4G");
+      mConfigPromise.reject("Device do not support 5G Wifi, please make sure the currently connected Wifi is 2.4G");
       return;
     }
     if (!isWifiConnected) {
-      promise.reject("No Wifi connection");
+      mConfigPromise.reject("No Wifi connection");
       return;
     }
+    
+    byte[] ssid = ByteUtil.getBytesByString(mSSID);
+    byte[] password = ByteUtil.getBytesByString(pwd);
+    byte[] bssid = TouchNetUtil.parseBssid2bytes(mBSSID);
+    byte[] devices = {(byte)(deviceCount >> 24), (byte)(deviceCount >> 16), (byte)(deviceCount >> 8), (byte) deviceCount};
+    byte[] broadcast = {(byte)(broadcastType >> 24), (byte)(broadcastType >> 16), (byte)(broadcastType >> 8), (byte) broadcastType};
 
     if (mTask != null) {
       mTask.cancelEsptouch();
     }
-    mTask = new EsptouchAsyncTask(new TaskListener() {
-      @Override
-      public void onFinished(List<IEsptouchResult> result) {
-        WritableArray ret = Arguments.createArray();
-        Boolean resolved = false;
-        try {
-          for (IEsptouchResult resultInList : result) {
-            Log.d(TAG, "for (IEsptouchResult resultInList : result)");
-            if (!resultInList.isCancelled() && resultInList.getBssid() != null) {
-              WritableMap map = Arguments.createMap();
-              map.putString("bssid", resultInList.getBssid());
-              map.putString("ipv4", resultInList.getInetAddress().getHostAddress());
-              Log.d(TAG, "Host name: " + resultInList.getInetAddress().getHostAddress());
-              ret.pushMap(map);
-              resolved = true;
-              if (!resultInList.isSuc()) {
-                Log.d(TAG, "Not successful!");
-                break;
-              }
-            }
-          }
-
-          if (resolved) {
-            Log.d(TAG, "Success run smartconfig");
-            mConfigPromise.resolve(ret);
-          } else {
-            Log.d(TAG, "Error run smartconfig");
-            mConfigPromise.reject("Smartconfig failed");
-          }
-        } catch (Exception e) {
-          Log.d(TAG, "Error, Smartconfig could not complete!");
-          mConfigPromise.reject("new Exception()", e);
-        }
-      }
-    });
-    mTask.execute(mSSID, mBSSID, pwd, "10");
+    mTask = new EsptouchAsyncTask(thisActivity);
+    mTask.execute(ssid, bssid, password, devices, broadcast);
+  }
+  
+  @ReactMethod
+  public void finish() {
+    mConfigPromise = null;
+    if (mTask != null) {
+      mTask.cancelEsptouch();
+    }
+    if (mReceiverRegistered) {
+      reactContext.unregisterReceiver(mReceiver);
+      Log.i(TAG, "finished and unregisterReceiver");
+    }
+    mReceiverRegistered = false;
   }
 
   @ReactMethod
@@ -150,117 +182,77 @@ public class RNSmartconfigNgModule extends ReactContextBaseJavaModule {
     promise.resolve(map);
   }
 
-  @ReactMethod
-  public void finish() {
-    mConfigPromise = null;
-    if (mTask != null) {
-      mTask.cancelEsptouch();
-    }
-    if (mReceiverRegistered) {
-      reactContext.unregisterReceiver(mReceiver);
-      Log.i(TAG, "Config and unregisterReceiver finished");
-    }
-    mReceiverRegistered = false;
+  @Override
+  public String getName() {
+    return "Smartconfig";
   }
 
-  public interface TaskListener {
-    public void onFinished(List<IEsptouchResult> result);
-  }
-
-  private void onWifiChanged(WifiInfo info) {
-    boolean disconnected = info == null
-            || info.getNetworkId() == -1
-            || "<unknown ssid>".equals(info.getSSID());
-    if (disconnected) {
-      Log.i(TAG, "No Wifi connection");
-      mSSID = "";
-      mBSSID = "";
-      isWifiConnected = false;
-      if (mTask != null) {
-        mTask.cancelEsptouch();
-        mTask = null;
-        if (mConfigPromise != null) {
-          mConfigPromise.reject("no Wifi connection");
-        }
-      }
-    } else {
-      isWifiConnected = true;
-      mSSID = info.getSSID();
-      if (mSSID.startsWith("\"") && mSSID.endsWith("\"")) {
-        mSSID = mSSID.substring(1, mSSID.length() - 1);
-      }
-      mBSSID = info.getBSSID();
-
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-        int frequency = info.getFrequency();
-        if (frequency > 4900 && frequency < 5900) {
-          // Connected 5G wifi. Device does not support 5G
-          Log.i(TAG, "Connected 5G wifi. Device does not support 5G");
-          is5GWifi = true;
-        } else {
-          is5GWifi = false;
-        }
-      }
-    }
-  }
-
-  private class EsptouchAsyncTask extends AsyncTask<String, Void, List<IEsptouchResult>> {
-    // without the lock, if the user tap confirm and cancel quickly enough,
-    // the bug will arise. the reason is follows:
-    // 0. task is starting created, but not finished
-    // 1. the task is cancel for the task hasn't been created, it do nothing
-    // 2. task is created
-    // 3. Oops, the task should be cancelled, but it is running
-    private final Object mLock = new Object();
+  private class EsptouchAsyncTask extends AsyncTask<byte[], Void, List<IEsptouchResult>> {
+    private WeakReference<Activity> mActivity;
     private IEsptouchTask mEsptouchTask;
-    private final TaskListener taskListener;
 
-    public EsptouchAsyncTask(TaskListener listener) {
-      this.taskListener = listener;
+    EsptouchAsyncTask(Activity activity) {
+      mActivity = new WeakReference<>(activity);
     }
 
     void cancelEsptouch() {
       cancel(true);
       if (mEsptouchTask != null) {
-          mEsptouchTask.interrupt();
+        mEsptouchTask.interrupt();
       }
     }
 
     @Override
     protected void onPreExecute() {
-      Log.d(TAG, "Begin task");
+      // Nothing
     }
 
     @Override
-    protected List<IEsptouchResult> doInBackground(String... params) {
-      Log.d(TAG, "Doing task ");
-      int taskResultCount = -1;
-      synchronized (mLock) {
-        String apSsid = params[0];
-        String apBssid = params[1];
-        String apPassword = params[2];
-        String taskResultCountStr = params[3];
-        taskResultCount = Integer.parseInt(taskResultCountStr);
+    protected List<IEsptouchResult> doInBackground(byte[]... params) {
+        int taskResultCount;
+        byte[] apSsid = params[0];
+        byte[] apBssid = params[1];
+        byte[] apPassword = params[2];
+        byte[] deviceCountData = params[3];
+        byte[] broadcastData = params[4];
+        taskResultCount = ByteBuffer.wrap(deviceCountData).getInt();
+        taskResultCount = taskResultCount <= 0 ? -1 : taskResultCount;
         mEsptouchTask = new EsptouchTask(apSsid, apBssid, apPassword, reactContext);
-      }
-      return mEsptouchTask.executeForResults(taskResultCount);
+        mEsptouchTask.setPackageBroadcast(ByteBuffer.wrap(broadcastData).getInt() == 1);
+        mEsptouchTask.setEsptouchListener(myListener);
+        return mEsptouchTask.executeForResults(taskResultCount);
     }
 
     @Override
     protected void onPostExecute(List<IEsptouchResult> result) {
       if (result == null) {
         Log.i(TAG, "Create Esptouch task failed, the EspTouch port could be used by other thread");
-        mConfigPromise.reject("Smartconfig failed - EsptouchAsyncTask");
+        mConfigPromise.reject("Create Esptouch task failed");
         return;
       }
-      Log.d(TAG, "Result: " + result.size());
+
       IEsptouchResult firstResult = result.get(0);
+      // check whether the task is cancelled and no results received
       if (!firstResult.isCancelled()) {
-        if (this.taskListener != null) {
-          this.taskListener.onFinished(result);
+        if (firstResult.isSuc()) {
+          WritableArray ret = Arguments.createArray();
+          for (IEsptouchResult touchResult : result) {
+            Log.d(TAG, "Host name: " + touchResult.getInetAddress().getHostAddress());
+            WritableMap map = Arguments.createMap();
+            map.putString("bssid", touchResult.getBssid());
+            map.putString("ipv4", touchResult.getInetAddress().getHostAddress());
+            ret.pushMap(map);
+          }
+          mConfigPromise.resolve(ret);
+        } else {
+          Log.d(TAG, "No devices smartconfig");
+          mConfigPromise.reject("No devices");
         }
+        mTask = null;
+      } else {
+        Log.d(TAG, "Smartconfig canceled");
+        mConfigPromise.reject("Smartconfig canceled");
       }
-      mTask = null;
     }
   }
 }
