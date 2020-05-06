@@ -130,7 +130,7 @@
 
 RCT_EXPORT_MODULE(Smartconfig);
 
-RCT_EXPORT_METHOD(initESPTouch)
+RCT_EXPORT_METHOD(init)
 {
     [ESP_NetUtil tryOpenNetworkPermission];
     if (self.helper == nil) {
@@ -169,4 +169,4 @@ RCT_EXPORT_METHOD(finish)
 }
 
 @end
-  
+
