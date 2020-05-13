@@ -1,12 +1,16 @@
 #import "ESPTouchTask.h"
 
-#if __has_include("RCTBridgeModule.h")
-#import "RCTBridgeModule.h"
-#else
-#import <React/RCTBridgeModule.h>
-#endif
+#import <React/RCTEventEmitter.h>
+
+@protocol SmartconfigResultDelegate <NSObject>
+
+- (void)resultAddedReceived:(NSString *) bssid;
+
+@end
 
 @interface SmartconfigDelegateImpl : NSObject<ESPTouchDelegate>
+
+@property(nonatomic, weak)id <SmartconfigResultDelegate> delegate;
 
 @end
 
@@ -18,7 +22,7 @@
 @property (nonatomic, strong) SmartconfigDelegateImpl *_smartconfigDelegate;
 @end
 
-@interface RNSmartconfigNg : NSObject <RCTBridgeModule>
+@interface RNSmartconfigNg : RCTEventEmitter <RCTBridgeModule, SmartconfigResultDelegate>
 @property SmartconfigHelper *helper;
 @end
   

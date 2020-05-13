@@ -12,10 +12,13 @@
 -(void) onEsptouchResultAddedWithResult: (ESPTouchResult *) result
 {
     RCTLog(@"SmartconifDelegateImpl onEsptouchResultAddedWithResult bssid: %@", result.bssid);
+    NSString *result_bssid = result.bssid;
+    if ([self.delegate respondsToSelector:@selector(resultAddedReceived:)]) {
+        [self.delegate resultAddedReceived:result_bssid];
+    }
 }
 
 @end
-
 
 @implementation SmartconfigHelper
 
@@ -57,25 +60,34 @@
         NSArray *esptouchResultArray = [self executeForResultsWithSsid:apSsid bssid:apBssid password:apPwd taskCount:taskCount broadcast:broadcast];
         // show the result to the user in UI Main Thread
         dispatch_async(dispatch_get_main_queue(), ^{
-            ESPTouchResult *firstResult = [esptouchResultArray objectAtIndex:0];
-            // check whether the task is cancelled and no results received
-            if (!firstResult.isCancelled)
+            BOOL resolved = false;
+            RCTLog(@"ReusultsWithSsid - %lu", [esptouchResultArray count]);
+            NSMutableArray *ret = [[NSMutableArray alloc]init];
+
+            for (int i = 0; i < [esptouchResultArray count]; ++i)
             {
-                if ([firstResult isSuc])
-                {   // 配网成功
-                    RCTLog(@"======>ESPTouch success");
-                    NSDictionary *res = @{@"code":@"200",@"msg":@"ESPTouch success"};
-                    resolve(res);
+                ESPTouchResult *resultInArray = [esptouchResultArray objectAtIndex:i];
+                
+                if (![resultInArray isCancelled] && [resultInArray bssid] != nil) {
+                    
+                    unsigned char *ipBytes = (unsigned char *)[[resultInArray ipAddrData] bytes];
+                    
+                    NSString *ipv4String = [NSString stringWithFormat:@"%d.%d.%d.%d", ipBytes[0], ipBytes[1], ipBytes [2], ipBytes [3]];
+                    
+                    NSDictionary *respData = @{@"bssid": [resultInArray bssid], @"ipv4": ipv4String};
+                    
+                    [ret addObject: respData];
+                    resolved = true;
+                    if (![resultInArray isSuc])
+                        break;
                 }
                 
-                else
-                {   // 配网失败
-                    RCTLog(@"======>ESPTouch fail");
-                    NSDictionary *res = @{@"code":@"0",@"msg":@"ESPTouch fail"};
-                    resolve(res);
-                }
+                
             }
-            
+            if(resolved)
+                resolve(ret);
+            else
+                reject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"Timoutout or not Found"));
         });
     });
 }
@@ -122,6 +134,9 @@
 
 
 @implementation RNSmartconfigNg
+{
+    bool hasListeners;
+}
 
 - (dispatch_queue_t)methodQueue
 {
@@ -130,17 +145,48 @@
 
 RCT_EXPORT_MODULE(Smartconfig);
 
+- (NSArray<NSString *> *)supportedEvents {
+    return @[@"SmartconfigResultAdded", @"SmartconfigWifiChanged"];
+}
+
+-(void)startObserving {
+    hasListeners = YES;
+}
+
+-(void)stopObserving {
+    hasListeners = NO;
+}
+
+- (void)resultAddedReceived:(NSString *) bssid
+{
+    if (hasListeners) {
+        [self sendEventWithName:@"SmartconfigResultAdded" body:@{@"bssid": bssid}];
+    }
+}
+
+- (void)wifiChangedReceived:(NSString *) ssid
+{
+    if (hasListeners) {
+        [self sendEventWithName:@"SmartconfigWifiChanged" body:@{@"ssid": ssid, @"connected": @YES, @"is5G": @NO}];
+    }
+}
+
 RCT_REMAP_METHOD(init, initESPTouch)
 {
     [ESP_NetUtil tryOpenNetworkPermission];
     if (self.helper == nil) {
         self.helper = [[SmartconfigHelper alloc] init];
+        self.helper._smartconfigDelegate.delegate = self;
     }
+    NSDictionary *netInfo = [self.helper fetchNetInfo];
+    NSString *apSsid = [netInfo objectForKey:@"SSID"];
+    [self wifiChangedReceived:apSsid];
 }
 
-RCT_REMAP_METHOD(startSmartConfig,
+RCT_REMAP_METHOD(start,
                  password: (NSString *)pwd
                  broadcastType: (nonnull NSNumber *) type
+                 devCnt: (nonnull NSNumber *) devs
                  resolver: (RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
@@ -161,6 +207,11 @@ RCT_REMAP_METHOD(getNetInfo,
     apBssid = apBssid == nil ? @"" : apBssid;
     NSDictionary *res = @{@"ssid":apSsid,@"bssid":apBssid};
     resolve(res);
+}
+
+RCT_EXPORT_METHOD(cancel)
+{
+    [self.helper cancel];
 }
 
 RCT_EXPORT_METHOD(finish)
