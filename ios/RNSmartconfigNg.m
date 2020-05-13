@@ -87,7 +87,7 @@
             if(resolved)
                 resolve(ret);
             else
-                reject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"Timoutout or not Found"));
+                reject(RCTErrorUnspecified, nil, RCTErrorWithMessage(@"No devices"));
         });
     });
 }
