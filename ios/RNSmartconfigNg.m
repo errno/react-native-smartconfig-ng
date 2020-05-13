@@ -30,14 +30,14 @@
 }
 
 
-- (void) startSmartConfig: (NSString *)apPwd broadcastType:(NSNumber *)type
+- (void) startSmartConfig: (NSString *)apPwd deviceCnt: (int)deviceCnt broadcastType:(NSNumber *)type
                  resolver: (RCTPromiseResolveBlock)resolve
                  rejecter: (RCTPromiseRejectBlock)reject
 {
     NSDictionary *netInfo = [self fetchNetInfo];
     NSString *apSsid = [netInfo objectForKey:@"SSID"];
     NSString *apBssid = [netInfo objectForKey:@"BSSID"];
-    int taskCount = 1;
+    int taskCount = deviceCnt;
     BOOL broadcast = [type intValue] == 1 ? YES : NO; // 1: broadcast  0:  multicast
     
     RCTLog(@"ssid======>%@", apSsid);
@@ -186,14 +186,14 @@ RCT_REMAP_METHOD(init, initESPTouch)
 RCT_REMAP_METHOD(start,
                  password: (NSString *)pwd
                  broadcastType: (nonnull NSNumber *) type
-                 devCnt: (nonnull NSNumber *) devs
+                 devCnt: (int) devs
                  resolver: (RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
     if (self.helper == nil) {
         self.helper = [[SmartconfigHelper alloc] init];
     }
-    [self.helper startSmartConfig:pwd broadcastType:type resolver: resolve rejecter: reject];
+    [self.helper startSmartConfig:pwd deviceCnt:devs broadcastType:type resolver: resolve rejecter: reject];
 }
 
 RCT_REMAP_METHOD(getNetInfo,
