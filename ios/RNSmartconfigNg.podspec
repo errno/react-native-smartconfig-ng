@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.author             = { "author" => "artem.hodlevskyy@gmail.com" }
   s.platform     = :ios, "8.0"
   s.source       = { :git => "https://github.com/errno/react-native-smartconfig-ng.git", :tag => "master" }
-  s.source_files  = "RNSmartconfigNg/**/*.{h,m}"
+  s.source_files  = "**/*.{h,m}"
   s.requires_arc = true
 
 
