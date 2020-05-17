@@ -5,6 +5,7 @@
 #import "ESPTouchResult.h"
 #import "ESP_NetUtil.h"
 
+#import <CoreLocation/CoreLocation.h>
 #import <SystemConfiguration/CaptiveNetwork.h>
 
 @implementation SmartconfigDelegateImpl
@@ -24,11 +25,10 @@
 
 -(id)init {
     self = [super init];
-    self._condition = [[NSCondition alloc]init];
+    self._condition = [[NSCondition alloc] init];
     self._smartconfigDelegate = [[SmartconfigDelegateImpl alloc]init];
     return self;
 }
-
 
 - (void) startSmartConfig: (NSString *)apPwd deviceCnt: (int)deviceCnt broadcastType:(NSNumber *)type
                  resolver: (RCTPromiseResolveBlock)resolve
@@ -61,7 +61,6 @@
         // show the result to the user in UI Main Thread
         dispatch_async(dispatch_get_main_queue(), ^{
             BOOL resolved = false;
-            RCTLog(@"ReusultsWithSsid - %lu", [esptouchResultArray count]);
             NSMutableArray *ret = [[NSMutableArray alloc]init];
 
             for (int i = 0; i < [esptouchResultArray count]; ++i)
@@ -81,8 +80,6 @@
                     if (![resultInArray isSuc])
                         break;
                 }
-                
-                
             }
             if(resolved)
                 resolve(ret);
@@ -92,7 +89,6 @@
     });
 }
 
-// 取消配置任务
 - (void) cancel
 {
     [self._condition lock];
@@ -136,6 +132,7 @@
 @implementation RNSmartconfigNg
 {
     bool hasListeners;
+    CLLocationManager *_locationManager;
 }
 
 - (dispatch_queue_t)methodQueue
@@ -167,20 +164,66 @@ RCT_EXPORT_MODULE(Smartconfig);
 - (void)wifiChangedReceived:(NSString *) ssid
 {
     if (hasListeners) {
-        [self sendEventWithName:@"SmartconfigWifiChanged" body:@{@"ssid": ssid, @"connected": @YES, @"is5G": @NO}];
+        if ([ssid isEqual: @""])
+            [self sendEventWithName:@"SmartconfigWifiChanged" body:@{@"ssid": ssid, @"connected": @NO, @"is5G": @NO}];
+        else
+            [self sendEventWithName:@"SmartconfigWifiChanged" body:@{@"ssid": ssid, @"connected": @YES, @"is5G": @NO}];
     }
+}
+
+#pragma mark - CLLocationManagerDelegate
+
+- (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error
+{
+  NSLog(@"didFailWithError %@", error);
+}
+
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations
+{
+    CLLocation *newLocation = [locations lastObject];
+    NSLog(@"didUpdateLocations %@", newLocation);
+}
+
+- (void)locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+    switch (status) {
+        case kCLAuthorizationStatusAuthorizedAlways:
+        case kCLAuthorizationStatusAuthorizedWhenInUse:
+            NSLog(@"=====> kCLAuthorizationStatusAuthorized");
+//            [_locationManager startUpdatingLocation];
+            [self updateWIFIinfo];
+            break;
+        case kCLAuthorizationStatusDenied:
+            NSLog(@"=====> kCLAuthorizationStatusDenied");
+            break;
+        case kCLAuthorizationStatusNotDetermined:
+            NSLog(@"=====> kCLAuthorizationStatusNotDetermined");
+            break;
+        case kCLAuthorizationStatusRestricted:
+            NSLog(@"=====> kCLAuthorizationStatusRestricted");
+            break;
+    }
+}
+
+- (void)updateWIFIinfo {
+    NSDictionary *netInfo = [self.helper fetchNetInfo];
+    NSString *apSsid = [netInfo objectForKey:@"SSID"];
+    apSsid = apSsid == nil ? @"" : apSsid;
+    [self wifiChangedReceived:apSsid];
 }
 
 RCT_REMAP_METHOD(init, initESPTouch)
 {
     [ESP_NetUtil tryOpenNetworkPermission];
+    _locationManager = [[CLLocationManager alloc] init];
+    _locationManager.delegate = self;
+    _locationManager.desiredAccuracy = kCLLocationAccuracyKilometer;
+    [_locationManager requestWhenInUseAuthorization];
     if (self.helper == nil) {
         self.helper = [[SmartconfigHelper alloc] init];
         self.helper._smartconfigDelegate.delegate = self;
     }
-    NSDictionary *netInfo = [self.helper fetchNetInfo];
-    NSString *apSsid = [netInfo objectForKey:@"SSID"];
-    [self wifiChangedReceived:apSsid];
+    [self updateWIFIinfo];
 }
 
 RCT_REMAP_METHOD(start,

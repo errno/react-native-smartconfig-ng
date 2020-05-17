@@ -2,9 +2,12 @@
 
 #import <React/RCTEventEmitter.h>
 
+#import <CoreLocation/CoreLocation.h>
+
 @protocol SmartconfigResultDelegate <NSObject>
 
 - (void)resultAddedReceived:(NSString *) bssid;
+- (void)wifiChangedReceived:(NSString *) ssid;
 
 @end
 
@@ -22,7 +25,7 @@
 @property (nonatomic, strong) SmartconfigDelegateImpl *_smartconfigDelegate;
 @end
 
-@interface RNSmartconfigNg : RCTEventEmitter <RCTBridgeModule, SmartconfigResultDelegate>
+@interface RNSmartconfigNg : RCTEventEmitter <RCTBridgeModule, CLLocationManagerDelegate, SmartconfigResultDelegate>
 @property SmartconfigHelper *helper;
 @end
   
